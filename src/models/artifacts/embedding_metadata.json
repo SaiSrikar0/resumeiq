@@ -1,0 +1,17 @@
+{
+    "best_pooling": "mean",
+    "pooling_eval_results": {
+        "cls": {
+            "mean_positive_sim": 0.8185628652572632,
+            "mean_negative_sim": 0.8104134202003479,
+            "separation": 0.008149445056915283
+        },
+        "mean": {
+            "mean_positive_sim": 0.6775907874107361,
+            "mean_negative_sim": 0.6537657976150513,
+            "separation": 0.023824989795684814
+        }
+    },
+    "spearman_correlation": 0.16816249233174713,
+    "spearman_p_value": 0.01730109239413859
+}

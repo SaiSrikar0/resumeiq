@@ -205,8 +205,8 @@ def parse_date_ranges(text: str) -> float:
             if 0 < duration < 15:
                 total_years += duration
                 
-    # 3. Standard YYYY - YYYY or YYYY to YYYY or YYYY - current
-    standard_yyyy_yyyy = re.findall(r'\b(\d{4})\s*(?:-|to|till|present|current)\s*(\d{4}|current|present)\b', text, flags=re.IGNORECASE)
+    # 3. Standard YYYY - YYYY or YYYY to YYYY or YYYY - current (with separator)
+    standard_yyyy_yyyy = re.findall(r'\b(\d{4})\s*(?:-|to|till)\s*(\d{4}|current|present)\b', text, flags=re.IGNORECASE)
     for y1, y2 in standard_yyyy_yyyy:
         y1 = int(y1)
         if y2.lower() in ['current', 'present']:
@@ -214,6 +214,16 @@ def parse_date_ranges(text: str) -> float:
         else:
             y2 = int(y2)
         if 1970 <= y1 <= current_year and 1970 <= y2 <= current_year:
+            duration = float(y2 - y1)
+            if 0 < duration < 15:
+                total_years += duration
+                
+    # 3.5. OCR YYYY current/present (space-separated, no standard separator)
+    ocr_yyyy_current = re.findall(r'\b(\d{4})\s+(current|present)\b', text, flags=re.IGNORECASE)
+    for y1, y2 in ocr_yyyy_current:
+        y1 = int(y1)
+        y2 = current_year
+        if 1970 <= y1 <= current_year:
             duration = float(y2 - y1)
             if 0 < duration < 15:
                 total_years += duration
@@ -303,7 +313,9 @@ def extract_structured_fields(row: Dict) -> Dict:
     
     skills = extract_skills(text)
     years_exp = extract_years_experience(text, experience_text=exp_text)
-    degree = extract_degree(edu_text if edu_text else text)
+    degree = extract_degree(edu_text) if edu_text else "None"
+    if degree == "None":
+        degree = extract_degree(text)
     
     # If the raw "Skills" field in the dataset is actually meaningful (e.g. not a placeholder "Python, SQL, Git, Linux"), 
     # we can combine it, but from what we saw it contains placeholders. We will trust our extracted skills.

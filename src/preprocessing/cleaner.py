@@ -50,8 +50,8 @@ def strip_contact_boilerplate(text: str) -> str:
     
     # Address and zip codes
     zip_pattern = r'\b\d{5}(?:-\d{4})?\b'
-    address_keywords = r'\b[a-zA-Z0-9\s,.-]+(?:street|st|road|rd|avenue|ave|lane|ln|drive|dr|boulevard|blvd|way|court|ct|loop|plaza|pkwy|parkway)\b'
-    city_state_pattern = r'\b[a-zA-Z\s]{3,20}\s+[a-zA-Z]{2}\b' # e.g. "San Francisco CA" or "Tracy CA"
+    address_keywords = r'\b[a-zA-Z0-9\s,.-]{1,60}\b(?:street|st|road|rd|avenue|ave|lane|ln|drive|dr|boulevard|blvd|way|court|ct|loop|plaza|pkwy|parkway)\b'
+    city_state_pattern = r'\b[A-Z][a-zA-Z\s,.-]{1,20}\s+[A-Z]{2}\b' # e.g. "San Francisco CA" or "Tracy CA"
     
     # Compile all patterns
     text = re.sub(email_pattern, '', text, flags=re.IGNORECASE)
@@ -59,7 +59,7 @@ def strip_contact_boilerplate(text: str) -> str:
     text = re.sub(url_pattern, '', text, flags=re.IGNORECASE)
     text = re.sub(ocr_links, '', text, flags=re.IGNORECASE)
     text = re.sub(address_keywords, '', text, flags=re.IGNORECASE)
-    text = re.sub(city_state_pattern, '', text, flags=re.IGNORECASE)
+    text = re.sub(city_state_pattern, '', text)
     text = re.sub(zip_pattern, '', text)
     
     # OCR-style noise patterns: sequences of numbers with long runs of spaces or tabs
