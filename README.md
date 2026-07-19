@@ -2,6 +2,21 @@
 
 ResumeIQ is an end-to-end, locally-runnable AI system that evaluates candidate resumes against job requirements, produces personalized, explainable feedback, and provides a conversational interface for candidates to discuss their results.
 
+## Table of Contents
+- [Architecture](#architecture)
+- [Features](#features)
+- [Prerequisites](#prerequisites)
+- [Setup](#setup)
+- [CLI Usage](#cli-usage)
+- [Running Tests](#running-tests)
+- [Project Structure](#project-structure)
+- [How Scoring Works](#how-scoring-works)
+- [Phase 1 EDA Summary](#phase-1-eda-summary)
+- [Known Limitations](#known-limitations)
+- [Sample Feedback Report](#sample-feedback-report)
+
+---
+
 ## Architecture
 
 ```mermaid
@@ -10,21 +25,92 @@ graph TD
     B[Job Description] --> E
     E --> F[Feature & Skill Extraction]
     F --> G[Processed Resumes Parquet]
-    
+
     G --> H[Classical ML Baseline: XGBoost/LightGBM]
     G --> I[Deep Learning Matcher: BERT Embeddings + Attention]
-    
+
     H --> J[Explainability Layer: Feature Importance]
-    I --> K[Explainability Layer: Attention weights]
-    
+    I --> K[Explainability Layer: Attention Weights]
+
     J & K --> L[RAG Feedback Pipeline]
     M[Best Writing Practices Snippets] --> N[FAISS Vector Index]
     G --> N
     N --> L
-    
+
     L --> O[Conversational Interface: LangGraph Agent]
     O --> P[FastAPI Backend / React Dashboard]
 ```
+
+## Features
+- **Resume-to-JD fit scoring** combining a classical ML baseline (XGBoost/LightGBM) with a BERT-based semantic similarity score
+- **Explainable breakdowns**: matched/missing skills, experience gap, education fit, feature importances, and attention-weight highlights
+- **Retrieval-grounded feedback**: FAISS-indexed writing-best-practice snippets and higher-scoring peer resumes, used to generate suggestions tied to specific gaps
+- **Conversational agent**: a LangGraph ReAct agent that answers candidate follow-up questions using tool calls against the actual score data, not free-form generation
+- **React dashboard**: upload/paste a resume, pick or paste a job description, view the score breakdown, feedback report, and chat panel
+
+## Prerequisites
+- Python 3.13.5
+- Node.js (for the frontend)
+- Ollama (optional — for local LLM-generated feedback text; without it, feedback falls back to a template-based generator, and chat falls back to a demo-mode mock LLM router that responds using tool data only)
+
+---
+
+## Setup
+
+**1. Backend**
+```bash
+cd backend
+python -m venv .venv
+.venv\Scripts\activate        # on macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+**2. Frontend**
+```bash
+cd frontend
+npm install
+```
+
+**3. Prepare the data** (run once — see [CLI Usage](#cli-usage) below)
+```bash
+cd backend
+python -m src.cli prepare-data
+```
+
+**4. Run the backend**
+```bash
+cd backend
+python -m uvicorn src.api:app --host 127.0.0.1 --port 8000 --reload
+```
+
+**5. Run the frontend** (in a separate terminal)
+```bash
+cd frontend
+npm run dev
+```
+Open the URL Vite prints (typically http://localhost:5173).
+
+---
+
+## CLI Usage
+Run these from `backend/`:
+
+```bash
+# One-time: clean + extract features + run EDA + synthesize job descriptions
+python -m src.cli prepare-data
+
+# End-to-end scoring demo: score, explainability, retrieval, and one agent turn
+python -m src.cli run-pipeline
+```
+
+## Running Tests
+```bash
+cd backend
+python -m pytest tests/ -v
+```
+22 tests covering preprocessing, models, the agent, and the API.
+
+---
 
 ## Project Structure
 
@@ -32,9 +118,7 @@ graph TD
 resumeiq/
   README.md
   .gitignore
-  docker-compose.yml
   backend/
-    Dockerfile
     requirements.txt
     conftest.py
     src/
@@ -51,116 +135,45 @@ resumeiq/
       processed/         # processed_resumes.parquet + job_descriptions.jsonl
     artifacts/           # Model files, vectorizer, embeddings & FAISS index
   frontend/
-    Dockerfile
     ...                  # Vite/React + Tailwind CSS v4
 ```
 
-## Setup & Running
-
-### Prerequisites
-- Python 3.13.5
-- Node.js (for frontend)
-- Ollama (for local LLM feedback generation, e.g. Llama 3.1 or Mistral)
-
-### Installation
-1. Create and activate a Python virtual environment inside `backend/`:
-   ```bash
-   cd backend
-   python -m venv .venv
-   .venv\Scripts\activate
-   ```
-2. Install Python dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. Install frontend dependencies:
-   ```bash
-   cd ../frontend
-   npm install
-   ```
-
-### CLI — Data Preparation (run once from `backend/`)
-Cleaning + extraction + EDA + JD synthesis:
-```bash
-# from backend/
-python -m src.cli prepare-data
-```
-
-### CLI — End-to-End Pipeline Evaluation (from `backend/`)
-Scoring demo + agent turn:
-```bash
-# from backend/
-python -m src.cli run-pipeline
-```
-
-### Running Tests (from `backend/`)
-```bash
-# from backend/
-python -m pytest tests/ -v
-```
-
-## Phase 1 EDA Summary
-The corrected dataset contains 3,124 unique resumes after removing 376 near-duplicate resumes from the original 3,500 entries.
-- **Completeness**: All raw fields (ResumeID, Category, Name, Email, Phone, Location, Summary, Skills, Experience, Education, Text, Source) are 100% complete.
-- **Top 5 Categories**:
-  1. Data Science: 170 (5.44%)
-  2. Java Developer: 168 (5.38%)
-  3. Python Developer: 161 (5.15%)
-  4. SQL Developer: 149 (4.77%)
-  5. DevOps: 140 (4.48%)
-- **Cleaned Text Length Distribution**:
-  - Min Length: 202 characters
-  - Max Length: 55,681 characters
-  - Mean Length: 3,126 characters
-  - Median Length: 1,845 characters
+---
 
 ## How Scoring Works
 The ResumeIQ fit score is a structured, rebalanced composite score designed to weigh candidate qualifications fairly and prevent keyword stuffing. It is **not** a single end-to-end learned prediction.
 
-The score is computed as:
 $$\text{Fit Score} = 0.40 \cdot \text{Skill Overlap} + 0.30 \cdot \text{Experience Match} + 0.15 \cdot \text{Degree Match} + 0.15 \cdot \text{Model Semantic Score}$$
 
-### Sub-Score Explanations:
-1. **Skill Overlap (40% weight)**: Measures the direct technical keyword overlap between the candidate's extracted skills and the required skills list ($\text{matched\_skills} / \text{required\_skills}$).
-2. **Experience Match (30% weight)**: Evaluates the candidate's years of experience against the required experience. If the candidate meets or exceeds the requirement, they receive a score of $1.0$. If there is an experience gap, the score is reduced proportionally ($\max(0.0, 1.0 - \frac{\text{gap}}{\text{required\_experience}}$).
-3. **Degree Match (15% weight)**: A binary check ($1.0$ or $0.0$) evaluating whether the candidate's highest degree level (None, Bachelor's, Master's, PhD) meets or exceeds the required education level.
-4. **Model Semantic Score (15% weight)**: The probability output of the trained model (incorporating TF-IDF cosine similarity), representing overall vocabulary similarity and semantic alignment.
+| Sub-score | Weight | What it measures |
+|---|---|---|
+| Skill Overlap | 40% | `matched_skills / required_skills` — direct technical keyword overlap |
+| Experience Match | 30% | `1.0` if candidate meets/exceeds required years; otherwise `max(0.0, 1.0 - gap/required_experience)` |
+| Degree Match | 15% | Binary: does highest degree (None/Bachelor's/Master's/PhD) meet or exceed the requirement |
+| Model Semantic Score | 15% | Trained model's probability output, incorporating TF-IDF cosine similarity — overall vocabulary/semantic alignment |
 
-## Known Limitations & Weak Labels
-1. **Synthetic Seed JDs**: Since the raw resumes dataset did not contain target job descriptions, a companion set of 40 job descriptions was programmatically synthesized and saved to `data/job_descriptions.jsonl`.
-2. **Category as Weak Labels**: The candidate category is used as a weak label proxy for "best-fit role" matching, meaning the models are trained to predict the category match rather than validated hiring success.
-3. **No spaCy/SHAP**: In compliance with technical constraints, no external NER libraries (like spaCy) or SHAP explainers are used. Features are extracted using regex and custom dictionary mappings, and explainability is built using model feature importances and BERT multi-head attention scores.
-4. **Zero-Experience Resumes**: Approximately 39% of the resumes in the corpus do not state numeric years of experience or contain unfilled template placeholders (e.g. "bringing number years experience"), resulting in an extracted experience of 0.0 years. This is a known dataset limitation.
-5. **LoRA fine-tuning**: Not attempted — Bypassed to maintain containerized runtime stability and avoid high CPU overhead during contrastive training in the deployment environment.
+## Phase 1 EDA Summary
+Computed on the corrected corpus (post text-cleaning fix):
+- **3,124 unique resumes** after removing 376 near-duplicates from the original 3,500
+- **Field completeness**: 100% across all raw fields (ResumeID, Category, Name, Email, Phone, Location, Summary, Skills, Experience, Education, Text, Source)
+- **Top 5 categories**: Data Science (170, 5.44%), Java Developer (168, 5.38%), Python Developer (161, 5.15%), SQL Developer (149, 4.77%), DevOps (140, 4.48%)
+- **Cleaned text length**: min 202, max 55,681, mean 3,126, median 1,845 characters
 
-## Docker Containerization
+## Known Limitations
+1. **Synthetic seed job descriptions** — the raw dataset has no target JDs, so 40 were programmatically synthesized (`data/job_descriptions.jsonl`); these are demo/test templates, not real postings.
+2. **Category as a weak label** — the resume `Category` field is used as a proxy for "best-fit role," not a validated hiring outcome.
+3. **No spaCy/SHAP** — by design, no external NER libraries or SHAP explainers are used. Extraction is regex + dictionary-based; explainability comes from model feature importances and BERT attention weights.
+4. **Zero-experience resumes** — ~39% of resumes have no stated numeric years of experience (or unfilled template placeholders), extracted as 0.0 years.
+5. **LoRA fine-tuning** — not attempted, to avoid high CPU overhead during contrastive training.
+6. **Fallback demo-mode chat** — if no local LLM (Ollama) is configured, `/chat` responses are generated from tool data via a template router rather than free-form generation; the UI shows a visible "Fallback Demo Mode" badge when this is active.
 
-ResumeIQ can be run inside a fully self-contained Docker Compose network.
-
-### Steps to Run:
-1. Ensure Docker Desktop is installed and running on your system.
-2. Build and start the services:
-   ```bash
-   docker-compose up --build
-   ```
-3. Once running, open the applications:
-   - **Interactive Frontend Dashboard**: `http://localhost:3000`
-   - **FastAPI Backend Swagger Docs**: `http://localhost:8000/docs`
-
-### Configuring Retrained Models:
-If you retrain the baseline LightGBM/XGBoost models or regenerate the FAISS index, you can point the docker container at your updated artifacts without rebuilding the image by using volume mounts in `docker-compose.yml`:
-```yaml
-  backend:
-    volumes:
-      - ./backend/artifacts:/app/artifacts
-```
+---
 
 ## Sample Feedback Report
-
-Here is a sample feedback report generated by ResumeIQ for candidate `REAL_0001` (Java Developer) matched against `JD_0001` (Senior Java Developer):
+Generated by ResumeIQ for candidate `REAL_0001` (Java Developer) against `JD_0001` (Senior Java Developer):
 
 <details>
-<summary>Click to view Sample Feedback Report</summary>
+<summary>Click to expand</summary>
 
 # ResumeIQ Feedback Report
 **Target Role:** Senior Java Developer (Java Developer)
@@ -180,15 +193,10 @@ ResumeIQ calculated a fit score of 55.4% for this role, driven primarily by a sk
 - Mention the data manipulation libraries (Pandas, NumPy) and machine learning libraries (Scikit-learn, PyTorch, TensorFlow) you utilized.
 
 ## Peer References
-Here are details from similar candidates in your category who scored higher against this job description. Use their phrasing and skill highlights as references:
+Details from similar candidates in the same category who scored higher against this job description:
 - **Candidate REAL_0108** (Fit Score: **94.5%** | Experience: **0.0 years**)
   - *Skills Emphasized:* Java, JavaScript, SQL, HTML, CSS
-  - *Summary Excerpt:* "junior java developer robert smith phone 123 456 78 99 email infoqwikresumecom website wwwqwikresumecom alabama objective 2 plus years exper..."
 - **Candidate REAL_0091** (Fit Score: **90.7%** | Experience: **5.0 years**)
   - *Skills Emphasized:* Java, SQL, Spring Boot, Oracle, MongoDB
-  - *Summary Excerpt:* "certified java developer 5 years experience developing apps various industries seeking help techvantage ..."
 - **Candidate REAL_0066** (Fit Score: **83.0%** | Experience: **5.0 years**)
   - *Skills Emphasized:* Java, HTML, CSS, Spring Boot, Git
-  - *Summary Excerpt:* "chicago illinois us linkedincomresumekraft summary highly skilled dedicated java developer 5 years experience designing developing applicatio..."
-
-</details>
