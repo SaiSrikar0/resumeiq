@@ -16,9 +16,9 @@ def load_jsonl_to_df(filepath: str) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 def main():
-    raw_dataset_path = "c:/Users/bsais/OneDrive/Desktop/celabal/project/resumes_dataset.jsonl"
-    processed_parquet_path = "c:/Users/bsais/OneDrive/Desktop/celabal/project/data/processed_resumes.parquet"
-    jds_output_path = "c:/Users/bsais/OneDrive/Desktop/celabal/project/data/job_descriptions.jsonl"
+    raw_dataset_path = "c:/Users/bsais/OneDrive/Desktop/celabal/project/data/raw/resumes_dataset.jsonl"
+    processed_parquet_path = "c:/Users/bsais/OneDrive/Desktop/celabal/project/data/processed/processed_resumes.parquet"
+    jds_output_path = "c:/Users/bsais/OneDrive/Desktop/celabal/project/data/processed/job_descriptions.jsonl"
     
     print("=" * 60)
     print("Starting ResumeIQ Preprocessing & EDA Pipeline")

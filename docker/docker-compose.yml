@@ -3,22 +3,22 @@ version: '3.8'
 services:
   backend:
     build:
-      context: .
-      dockerfile: Dockerfile.backend
+      context: ..
+      dockerfile: docker/Dockerfile.backend
     ports:
       - "8000:8000"
     volumes:
       # Optional: bind mount code for live reload during development
-      - ./src:/app/src
-      - ./data:/app/data
+      - ../src:/app/src
+      - ../data:/app/data
     environment:
       - HOST=0.0.0.0
       - PORT=8000
 
   frontend:
     build:
-      context: .
-      dockerfile: Dockerfile.frontend
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
     ports:
       - "3000:3000"
     environment:

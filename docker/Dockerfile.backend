@@ -13,8 +13,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY data/ data/
 COPY src/ src/
-COPY run_pipeline.py .
-COPY resumes_dataset.jsonl .
 
 EXPOSE 8000
 

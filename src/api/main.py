@@ -44,8 +44,8 @@ app.state.custom_resumes = {}
 @app.on_event("startup")
 def startup_event():
     print("Loading ResumeIQ datasets and model artifacts...")
-    app.state.resumes_df = pd.read_parquet('data/processed_resumes.parquet')
-    app.state.jds_df = pd.read_json('data/job_descriptions.jsonl', lines=True)
+    app.state.resumes_df = pd.read_parquet('data/processed/processed_resumes.parquet')
+    app.state.jds_df = pd.read_json('data/processed/job_descriptions.jsonl', lines=True)
     
     app.state.baseline_clf, app.state.baseline_type, app.state.importances = load_baseline()
     with open('src/models/artifacts/tfidf_vectorizer.pkl', 'rb') as f:

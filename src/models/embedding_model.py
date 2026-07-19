@@ -217,8 +217,8 @@ def main():
     
     # 2. Load resumes and JDs
     print("Loading datasets...")
-    resumes_df = pd.read_parquet('data/processed_resumes.parquet')
-    jds_df = pd.read_json('data/job_descriptions.jsonl', lines=True)
+    resumes_df = pd.read_parquet('data/processed/processed_resumes.parquet')
+    jds_df = pd.read_json('data/processed/job_descriptions.jsonl', lines=True)
     
     # 3. Evaluate and select pooling strategy
     best_pooling, pooling_eval_results = evaluate_pooling_strategies(resumes_df, jds_df, model, tokenizer, num_samples=100)

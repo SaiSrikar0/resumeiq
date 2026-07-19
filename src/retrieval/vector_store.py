@@ -91,7 +91,7 @@ def build_and_save_index():
     custom_embeddings = DistilBertEmbeddings(model, tokenizer, pooling=best_pooling)
     
     # 1. Load Precomputed Resumes Data
-    resumes_df = pd.read_parquet('data/processed_resumes.parquet')
+    resumes_df = pd.read_parquet('data/processed/processed_resumes.parquet')
     resume_embs = np.load('src/models/artifacts/resume_embeddings.npy')
     
     with open('src/models/artifacts/resume_ids.json', 'r') as f:

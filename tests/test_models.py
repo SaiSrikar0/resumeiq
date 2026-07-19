@@ -42,8 +42,8 @@ def test_build_features_optimized():
 
 def test_explain_and_generate_report():
     # Load sample inputs
-    resumes_df = pd.read_parquet('data/processed_resumes.parquet')
-    jds_df = pd.read_json('data/job_descriptions.jsonl', lines=True)
+    resumes_df = pd.read_parquet('data/processed/processed_resumes.parquet')
+    jds_df = pd.read_json('data/processed/job_descriptions.jsonl', lines=True)
     
     res = resumes_df.iloc[0]
     jd = jds_df.iloc[0]

@@ -372,4 +372,4 @@ def generate_synthetic_jds(output_path: str):
     print(f"Generated {len(SEED_JOB_DESCRIPTIONS)} synthetic Job Descriptions in {output_path}")
 
 if __name__ == "__main__":
-    generate_synthetic_jds("c:/Users/bsais/OneDrive/Desktop/celabal/project/data/job_descriptions.jsonl")
+    generate_synthetic_jds("c:/Users/bsais/OneDrive/Desktop/celabal/project/data/processed/job_descriptions.jsonl")

@@ -1,8 +1,13 @@
+import sys
+from pathlib import Path
+
+# Add project root to sys.path to resolve src imports correctly
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+
 import os
 import json
 import pickle
 import pandas as pd
-from pathlib import Path
 from src.models.classical_baseline import build_features_optimized
 from src.models.embedding_model import load_model, get_embeddings_batched
 from src.feedback.explain import load_baseline, compute_explainability_breakdown
@@ -18,8 +23,8 @@ def main():
     
     # 1. Load Data
     print("\n[Step 1] Loading sample data...")
-    resumes_df = pd.read_parquet('data/processed_resumes.parquet')
-    jds_df = pd.read_json('data/job_descriptions.jsonl', lines=True)
+    resumes_df = pd.read_parquet('data/processed/processed_resumes.parquet')
+    jds_df = pd.read_json('data/processed/job_descriptions.jsonl', lines=True)
     
     # Pick a candidate and a JD from matching categories to see a realistic alignment
     category = "Java Developer"
@@ -65,11 +70,14 @@ def main():
         res_row, jd_row, breakdown, faiss_db, resumes_df, baseline_clf, baseline_type, tfidf, use_llm=False
     )
     
-    # Save the report in the artifacts directory
+    # Save the report in the artifacts directory and repository docs directory
     artifact_dir = Path("C:/Users/bsais/.gemini/antigravity-ide/brain/be473fbb-9f5b-438e-bcc3-f202c5084ac1")
     report_path = artifact_dir / "sample_feedback_report.md"
     report_path.write_text(feedback_report, encoding="utf-8")
-    print(f"Feedback report compiled and saved to artifact path: [sample_feedback_report.md](file:///{report_path.as_posix()})")
+    
+    repo_report_path = Path("docs/sample_feedback_report.md")
+    repo_report_path.write_text(feedback_report, encoding="utf-8")
+    print(f"Feedback report compiled and saved to: [docs/sample_feedback_report.md](file:///{repo_report_path.resolve().as_posix()})")
     
     # 5. Conversational Agent Demo Turn
     print("\n[Step 5] Running demo turn with the Conversational Agent...")

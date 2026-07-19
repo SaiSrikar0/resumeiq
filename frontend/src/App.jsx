@@ -568,7 +568,13 @@ function App() {
                   {/* Chat Header */}
                   <div className="bg-slate-950/80 border-b border-slate-800 px-4 py-3 flex items-center justify-between">
                     <div>
-                      <h3 className="text-sm font-bold text-white">AI Career Coach Session</h3>
+                      <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                        AI Career Coach Session
+                        <span className="text-[9px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded flex items-center gap-1 font-semibold">
+                          <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse"></span>
+                          Fallback Demo Mode (No LLM Configured)
+                        </span>
+                      </h3>
                       <p className="text-[10px] text-slate-400">Contextual routing backed by LangGraph matching tools</p>
                     </div>
                     <span className="text-[10px] bg-sky-500/20 text-sky-400 font-mono px-2 py-0.5 rounded">{sessionId}</span>

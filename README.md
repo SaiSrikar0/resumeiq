@@ -106,7 +106,7 @@ $$\text{Fit Score} = 0.40 \cdot \text{Skill Overlap} + 0.30 \cdot \text{Experien
 2. **Category as Weak Labels**: The candidate category is used as a weak label proxy for "best-fit role" matching, meaning the models are trained to predict the category match rather than validated hiring success.
 3. **No spaCy/SHAP**: In compliance with technical constraints, no external NER libraries (like spaCy) or SHAP explainers are used. Features are extracted using regex and custom dictionary mappings, and explainability is built using model feature importances and BERT multi-head attention scores.
 4. **Zero-Experience Resumes**: Approximately 39% of the resumes in the corpus do not state numeric years of experience or contain unfilled template placeholders (e.g. "bringing number years experience"), resulting in an extracted experience of 0.0 years. This is a known dataset limitation.
-5. **LoRA Fine-Tuning Status**: Bypassed. Contrastive LoRA/PEFT fine-tuning was skipped to ensure deployment runtime stability in the CPU-only containerized environment.
+5. **LoRA fine-tuning**: Not attempted — Bypassed to maintain containerized runtime stability and avoid high CPU overhead during contrastive training in the deployment environment.
 
 ## Docker Containerization
 

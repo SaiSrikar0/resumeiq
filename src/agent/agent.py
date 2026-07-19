@@ -18,9 +18,9 @@ _data_cache = {}
 
 def _load_data():
     if 'resumes_df' not in _data_cache:
-        _data_cache['resumes_df'] = pd.read_parquet('data/processed_resumes.parquet')
+        _data_cache['resumes_df'] = pd.read_parquet('data/processed/processed_resumes.parquet')
     if 'jds_df' not in _data_cache:
-        _data_cache['jds_df'] = pd.read_json('data/job_descriptions.jsonl', lines=True)
+        _data_cache['jds_df'] = pd.read_json('data/processed/job_descriptions.jsonl', lines=True)
     return _data_cache['resumes_df'], _data_cache['jds_df']
 
 def _load_models():

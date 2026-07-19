@@ -170,8 +170,8 @@ def run_cross_validation(df, features, model_type='xgboost'):
 def main():
     # 1. Load data
     print("Loading datasets...")
-    resumes_df = pd.read_parquet('data/processed_resumes.parquet')
-    jds_df = pd.read_json('data/job_descriptions.jsonl', lines=True)
+    resumes_df = pd.read_parquet('data/processed/processed_resumes.parquet')
+    jds_df = pd.read_json('data/processed/job_descriptions.jsonl', lines=True)
     
     # 2. Fit TF-IDF Vectorizer
     print("Fitting TF-IDF Vectorizer...")
