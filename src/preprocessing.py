@@ -1,5 +1,149 @@
 import re
+import pandas as pd
+import numpy as np
 from typing import List, Dict, Set, Tuple
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+
+# =====================================================================
+# PART 1: Text Cleaning (formerly cleaner.py)
+# =====================================================================
+
+def clean_whitespace(text: str) -> str:
+    """Normalize whitespace by replacing multiple spaces, tabs, and newlines with a single space."""
+    if not isinstance(text, str):
+        return ""
+    # Replace multiple whitespaces, tabs, newlines with single space
+    text = re.sub(r'\s+', ' ', text)
+    return text.strip()
+
+def strip_contact_boilerplate(text: str) -> str:
+    """
+    Strips boilerplate contact header text that leaks into Summary or Experience.
+    This includes emails, phone numbers, website links, social handles, zip codes, and street/city references.
+    """
+    if not isinstance(text, str):
+        return ""
+
+    # First, strip leading names up to street keywords or contact patterns
+    # Matches letters and spaces at the start, followed by street keywords
+    text = re.sub(
+        r'^[a-z\s]+?\b(?:street|st|road|rd|avenue|ave|lane|ln|drive|dr|boulevard|blvd|way|court|ct|loop|plaza|pkwy|parkway)\b',
+        '',
+        text,
+        flags=re.IGNORECASE
+    )
+    
+    # Matches letters and spaces at the start, followed by contact details (phone, link, email, etc.)
+    text = re.sub(
+        r'^[a-z\s]+?\b(?:\d{10,12}|linkedincom\S*|githubcom\S*|twittercom\S*|resumesampleexamplecom|gmailcom|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b',
+        '',
+        text,
+        flags=re.IGNORECASE
+    )
+
+    # Common email regex
+    email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+    
+    # Phone numbers (various formats, including spaces and dashes)
+    phone_pattern = r'\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}\b'
+    
+    # Links/URLs
+    url_pattern = r'\b(?:https?://)?(?:www\.)?(?:linkedin\.com/in/|github\.com/|twitter\.com/|resumesampleexample\.com)[a-zA-Z0-9._%+-/]*\b'
+    # Shortened variants in OCR text
+    ocr_links = r'\b(?:linkedincomin|githubcom|twittercom|resumesampleexamplecom)\S*\b'
+    
+    # Address and zip codes
+    zip_pattern = r'\b\d{5}(?:-\d{4})?\b'
+    address_keywords = r'\b[a-zA-Z0-9\s,.-]{1,60}\b(?:street|st|road|rd|avenue|ave|lane|ln|drive|dr|boulevard|blvd|way|court|ct|loop|plaza|pkwy|parkway)\b'
+    city_state_pattern = r'\b[A-Z][a-zA-Z\s,.-]{1,20}\s+[A-Z]{2}\b' # e.g. "San Francisco CA" or "Tracy CA"
+    
+    # Compile all patterns
+    text = re.sub(email_pattern, '', text, flags=re.IGNORECASE)
+    text = re.sub(phone_pattern, '', text)
+    text = re.sub(url_pattern, '', text, flags=re.IGNORECASE)
+    text = re.sub(ocr_links, '', text, flags=re.IGNORECASE)
+    text = re.sub(address_keywords, '', text, flags=re.IGNORECASE)
+    text = re.sub(city_state_pattern, '', text)
+    text = re.sub(zip_pattern, '', text)
+    
+    # OCR-style noise patterns: sequences of numbers with long runs of spaces or tabs
+    # (often found in the phone number/contact block of the raw dataset)
+    text = re.sub(r'\b\d{5}\s+\d{3}\s+\d{4,7}\b', '', text)
+    text = re.sub(r'\b\d{5,10}\b', '', text)
+    
+    # Let's clean up text that starts with common header words (e.g. "jessica claire montgomery street san francisco ca")
+    # If the text starts with a personal name or typical placeholder header, let's remove common leak prefixes
+    header_keywords = [
+        r'^name\s*:\s*[a-zA-Z\s]+',
+        r'^phone\s*:\s*[\d\s+-]+',
+        r'^email\s*:\s*\S+',
+        r'^address\s*:\s*[a-zA-Z0-9\s,.-]+',
+        r'^contact\s*:\s*[a-zA-Z0-9\s,.-]+'
+    ]
+    for hk in header_keywords:
+        text = re.sub(hk, '', text, flags=re.IGNORECASE)
+        
+    return clean_whitespace(text)
+
+def clean_ocr_text(text: str) -> str:
+    """
+    Cleans OCR-style concatenated text, digit runs, and run-together words.
+    """
+    if not isinstance(text, str):
+        return ""
+    
+    # Strip contact boilerplate first
+    text = strip_contact_boilerplate(text)
+    
+    # Replace weird formatting, non-ascii characters (or normalize them)
+    text = re.sub(r'[^\x00-\x7F]+', ' ', text)
+    
+    # Remove weird bullet points and isolated characters (like single characters or digits floating around)
+    # But preserve meaningful numbers and letters.
+    text = re.sub(r'\b[a-zA-Z]\b', '', text) # remove single letters
+    # Remove characters like |, •, *, _ etc.
+    text = re.sub(r'[\x00-\x1F\x7F-\x9F\|•\*_#]', ' ', text)
+    
+    return clean_whitespace(text)
+
+def deduplicate_resumes(df: pd.DataFrame, text_col: str = 'Text', threshold: float = 0.95) -> pd.DataFrame:
+    """
+    De-duplicates near-identical resumes using TF-IDF and Cosine Similarity.
+    Keeps the first occurrence of each unique resume.
+    """
+    if df.empty:
+        return df
+    
+    # Fill missing values
+    texts = df[text_col].fillna("").tolist()
+    
+    # Vectorize
+    vectorizer = TfidfVectorizer(max_features=5000, stop_words='english')
+    tfidf_matrix = vectorizer.fit_transform(texts)
+    
+    # Compute Cosine Similarity
+    sim_matrix = cosine_similarity(tfidf_matrix)
+    
+    # Find duplicates
+    n = len(df)
+    to_keep = np.ones(n, dtype=bool)
+    
+    for i in range(n):
+        if not to_keep[i]:
+            continue
+        # Find all other resumes with similarity above threshold
+        similar_indices = np.where(sim_matrix[i] > threshold)[0]
+        for idx in similar_indices:
+            if idx > i:
+                to_keep[idx] = False
+                
+    return df[to_keep].reset_index(drop=True)
+
+
+# =====================================================================
+# PART 2: Entity Extraction (formerly extractor.py)
+# =====================================================================
 
 # Master list of skills mapped to standardized representations
 SKILL_PATTERNS = {
@@ -169,23 +313,14 @@ def extract_skills(text: str) -> List[str]:
 def parse_date_ranges(text: str) -> float:
     """
     Parses date intervals from OCR-style concatenated text and calculates total years.
-    Examples of OCR run-together format:
-      "102011 112013" -> Oct 2011 to Nov 2013 (approx 2 years)
-      "092008 102011" -> Sept 2008 to Oct 2011 (approx 3 years)
-      "052005 2007" -> May 2005 to 2007 (approx 2 years)
-      "2014 current" -> 2014 to present (approx 12 years if 2026)
-      "2014 2018" -> 2014 to 2018 (4 years)
     """
     if not isinstance(text, str):
         return 0.0
     
     total_years = 0.0
-    
-    # Normalize current year
-    current_year = 2026 # Context says local time is 2026-07-19
+    current_year = 2026 # Normalized current year
     
     # 1. OCR pattern for MMYYYY MMYYYY (e.g. 102011 112013)
-    # Match sequences of two 6-digit numbers representing MMYYYY
     ocr_mmyyyy_mmyyyy = re.findall(r'\b(\d{2})(\d{4})\s+(\d{2})(\d{4})\b', text)
     for m1, y1, m2, y2 in ocr_mmyyyy_mmyyyy:
         y1, y2 = int(y1), int(y2)
@@ -205,7 +340,7 @@ def parse_date_ranges(text: str) -> float:
             if 0 < duration < 15:
                 total_years += duration
                 
-    # 3. Standard YYYY - YYYY or YYYY to YYYY or YYYY - current (with separator)
+    # 3. Standard YYYY - YYYY or YYYY to YYYY or YYYY - current
     standard_yyyy_yyyy = re.findall(r'\b(\d{4})\s*(?:-|to|till)\s*(\d{4}|current|present)\b', text, flags=re.IGNORECASE)
     for y1, y2 in standard_yyyy_yyyy:
         y1 = int(y1)
@@ -218,7 +353,7 @@ def parse_date_ranges(text: str) -> float:
             if 0 < duration < 15:
                 total_years += duration
                 
-    # 3.5. OCR YYYY current/present (space-separated, no standard separator)
+    # 3.5. OCR YYYY current/present (space-separated)
     ocr_yyyy_current = re.findall(r'\b(\d{4})\s+(current|present)\b', text, flags=re.IGNORECASE)
     for y1, y2 in ocr_yyyy_current:
         y1 = int(y1)
@@ -230,13 +365,11 @@ def parse_date_ranges(text: str) -> float:
 
     # 4. Standard YYYY YYYY (OCR-style with spaces)
     ocr_yyyy_yyyy = re.findall(r'\b(\d{4})\s+(\d{4})\b', text)
-    # filter out already parsed ones by ensuring we don't count duplicate spans if they overlap
-    # but for simple heuristic:
     for y1, y2 in ocr_yyyy_yyyy:
         y1, y2 = int(y1), int(y2)
         if 1970 <= y1 <= current_year and 1970 <= y2 <= current_year and y2 >= y1:
             duration = float(y2 - y1)
-            if 0 < duration < 10: # Cap at 10 years per interval to prevent overlaps and weird spans
+            if 0 < duration < 10: # Cap per interval to prevent overlaps
                 total_years += duration
                 
     return min(total_years, 40.0) # Cap total years at 40 to avoid OCR anomalies
@@ -251,9 +384,7 @@ def extract_years_experience(text: str, experience_text: str = None) -> float:
     if not isinstance(text, str):
         return 0.0
     
-    # Heuristic 1: Regex on direct mentions in Text
     direct_mentions = []
-    # Match phrases like "10 years experience", "3+ years of experience", "bringing 10 years"
     patterns = [
         r'\b(\d{1,2})\+?\s*(?:years?|yrs?)\s+(?:[a-zA-Z ]{1,30}\s+)?(?:of\s+)?experience\b',
         r'\bexperience\s*:\s*(\d{1,2})\+?\s*(?:years?|yrs?)\b',
@@ -268,30 +399,23 @@ def extract_years_experience(text: str, experience_text: str = None) -> float:
             
     direct_val = max(direct_mentions) if direct_mentions else 0.0
     
-    # Heuristic 2: Sum date ranges
-    # Use the experience text if provided, otherwise fallback to entire text
     eval_text = experience_text if experience_text else text
     parsed_val = parse_date_ranges(eval_text)
     
-    # Return max, rounded to 1 decimal place
     res = max(direct_val, parsed_val)
     return round(res, 1)
 
 def extract_degree(text: str) -> str:
     """
     Extracts the highest degree level mentioned in text.
-    Mapping priority: PhD > Master's > Bachelor's > Associate/Other > None
+    Mapping priority: PhD > Master's > Bachelor's > None
     """
     if not isinstance(text, str):
         return "None"
     
     text_lower = text.lower()
-    
-    # PhD pattern
     phd_pattern = r'\b(?:phd\b|ph\.d\.(?!\w)|doctorate\b|doctor\s+of\s+philosophy\b)'
-    # Master's pattern
     masters_pattern = r'\b(?:ms\b|m\.s\.(?!\w)|msc\b|m\.sc\.(?!\w)|mtech\b|m\.tech\.(?!\w)|mba\b|m\.b\.a\.(?!\w)|master\b|masters\b|postgraduate\b)'
-    # Bachelor's pattern
     bachelors_pattern = r'\b(?:bs\b|b\.s\.(?!\w)|bsc\b|b\.sc\.(?!\w)|btech\b|b\.tech\.(?!\w)|ba\b|b\.a\.(?!\w)|bachelor\b|bachelors\b|undergraduate\b|graduate\b)'
     
     if re.search(phd_pattern, text_lower):
@@ -316,10 +440,7 @@ def extract_structured_fields(row: Dict) -> Dict:
     degree = extract_degree(edu_text) if edu_text else "None"
     if degree == "None":
         degree = extract_degree(text)
-    
-    # If the raw "Skills" field in the dataset is actually meaningful (e.g. not a placeholder "Python, SQL, Git, Linux"), 
-    # we can combine it, but from what we saw it contains placeholders. We will trust our extracted skills.
-    
+        
     return {
         "ExtractedSkills": skills,
         "YearsOfExperience": years_exp,

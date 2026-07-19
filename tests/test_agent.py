@@ -3,7 +3,7 @@ from typing import List, Optional, Any
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.outputs import ChatResult, ChatGeneration
-from src.agent.agent import create_agent
+from src.agent import create_agent
 
 class MockReActChatModel(BaseChatModel):
     """

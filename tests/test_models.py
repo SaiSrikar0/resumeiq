@@ -5,11 +5,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.models.classical_baseline import check_degree_match, build_features_optimized
-from src.feedback.explain import compute_explainability_breakdown, load_baseline
-from src.feedback.generate import generate_feedback_report
-from src.retrieval.vector_store import load_index
-from src.models.embedding_model import load_model
+from src.models import check_degree_match, build_features_optimized, load_model
+from src.feedback import compute_explainability_breakdown, load_baseline, generate_feedback_report
+from src.retrieval import load_index
 
 def test_check_degree_match():
     # Priority: PhD (3) > Master's (2) > Bachelor's (1) > None (0)
@@ -50,7 +48,7 @@ def test_explain_and_generate_report():
     
     # Load model and vectorizer
     baseline_clf, baseline_type, importances = load_baseline()
-    with open('src/models/artifacts/tfidf_vectorizer.pkl', 'rb') as f:
+    with open('artifacts/tfidf_vectorizer.pkl', 'rb') as f:
         tfidf = pickle.load(f)
         
     tokenizer, model = load_model()

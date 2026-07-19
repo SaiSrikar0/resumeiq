@@ -9,18 +9,15 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-# Add project root to path
 import sys
 from pathlib import Path
-sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from src.preprocessing.cleaner import clean_ocr_text
-from src.preprocessing.extractor import extract_structured_fields, extract_skills, extract_years_experience, extract_degree
-from src.feedback.explain import load_baseline, compute_explainability_breakdown
-from src.feedback.generate import generate_feedback_report
-from src.retrieval.vector_store import load_index
-from src.models.embedding_model import load_model
-from src.agent.agent import create_agent
+from src.preprocessing import clean_ocr_text, extract_structured_fields, extract_skills, extract_years_experience, extract_degree
+from src.feedback import load_baseline, compute_explainability_breakdown, generate_feedback_report
+from src.retrieval import load_index
+from src.models import load_model
+from src.agent import create_agent
 
 app = FastAPI(
     title="ResumeIQ API",
@@ -28,7 +25,6 @@ app = FastAPI(
     version="1.0"
 )
 
-# Enable CORS for React frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -37,10 +33,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# In-memory store for newly uploaded resumes
 app.state.custom_resumes = {}
 
-# Lazy load models and data on startup
 @app.on_event("startup")
 def startup_event():
     print("Loading ResumeIQ datasets and model artifacts...")
@@ -48,14 +42,13 @@ def startup_event():
     app.state.jds_df = pd.read_json('data/processed/job_descriptions.jsonl', lines=True)
     
     app.state.baseline_clf, app.state.baseline_type, app.state.importances = load_baseline()
-    with open('src/models/artifacts/tfidf_vectorizer.pkl', 'rb') as f:
+    with open('artifacts/tfidf_vectorizer.pkl', 'rb') as f:
         app.state.tfidf = pickle.load(f)
         
     app.state.tokenizer, app.state.emb_model = load_model()
     app.state.faiss_db = load_index(app.state.emb_model, app.state.tokenizer)
     print("Startup complete. All models loaded.")
 
-# Schemas
 class ResumeUploadText(BaseModel):
     text: str = Field(..., min_length=10, description="Raw text of the resume")
     category: Optional[str] = Field("Unknown", description="Job category of the candidate")
@@ -76,7 +69,6 @@ class ChatRequest(BaseModel):
     session_id: str
     message: str
 
-# Helper to look up resume by ID
 def get_resume_by_id(resume_id: str) -> Dict[str, Any]:
     if resume_id in app.state.custom_resumes:
         return app.state.custom_resumes[resume_id]
@@ -86,7 +78,6 @@ def get_resume_by_id(resume_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"Resume ID '{resume_id}' not found.")
     return matches.iloc[0].to_dict()
 
-# Helper to look up or parse JD
 def get_job_description(jd_id: Optional[str], jd_text: Optional[str]) -> Dict[str, Any]:
     if not jd_id and not jd_text:
         raise HTTPException(status_code=400, detail="Must provide either jd_id or jd_text.")
@@ -97,12 +88,10 @@ def get_job_description(jd_id: Optional[str], jd_text: Optional[str]) -> Dict[st
             raise HTTPException(status_code=404, detail=f"Job Description ID '{jd_id}' not found.")
         return matches.iloc[0].to_dict()
         
-    # Handle ad-hoc JD text
     cleaned_jd = clean_ocr_text(jd_text)
     if not cleaned_jd:
         raise HTTPException(status_code=400, detail="Provided jd_text is empty or invalid.")
         
-    # Structural extraction from custom JD
     skills = extract_skills(cleaned_jd)
     exp = extract_years_experience(cleaned_jd)
     deg = extract_degree(cleaned_jd)
@@ -117,7 +106,6 @@ def get_job_description(jd_id: Optional[str], jd_text: Optional[str]) -> Dict[st
         "Description": cleaned_jd
     }
 
-# Endpoints
 @app.post("/resumes", response_model=Dict[str, Any])
 async def upload_resume(
     text: Optional[str] = Form(None),
@@ -140,7 +128,6 @@ async def upload_resume(
     if len(cleaned_text.strip()) < 10:
         raise HTTPException(status_code=400, detail="Resume text is too short or empty after cleaning.")
         
-    # Run structured feature extraction
     temp_row = {
         "Summary": cleaned_text,
         "Experience": "",
@@ -149,7 +136,6 @@ async def upload_resume(
     }
     extracted = extract_structured_fields(temp_row)
     
-    # Fallback to Text for degree if not found
     if extracted["DegreeLevel"] == "None":
         extracted["DegreeLevel"] = extract_degree(cleaned_text)
         
@@ -209,7 +195,6 @@ def get_feedback(req: FeedbackRequest):
     res_row = get_resume_by_id(req.resume_id)
     jd_row = get_job_description(req.jd_id, req.jd_text)
     
-    # Compute breakdown first
     breakdown = compute_explainability_breakdown(
         res_row, 
         jd_row, 
@@ -221,7 +206,6 @@ def get_feedback(req: FeedbackRequest):
         app.state.tokenizer
     )
     
-    # Run retrieval report
     feedback_report = generate_feedback_report(
         res_row, 
         jd_row, 
@@ -243,16 +227,12 @@ def get_feedback(req: FeedbackRequest):
 @app.post("/chat")
 def run_chat(req: ChatRequest):
     res_row = get_resume_by_id(req.resume_id)
-    jd_row = get_job_description(req.jd_id, None) # requires standard jd_id for conversational tools
+    jd_row = get_job_description(req.jd_id, None)
     
-    # Construct a local fallback LangGraph router to handle matching agent queries programmatically
-    # without needing external LLM API tokens.
     user_msg = req.message.lower()
     tool_calls_executed = []
     
-    # Run pre-extraction checks for Mock LLM Tool Router
-    from langchain_core.messages import ToolMessage
-    from src.agent.agent import get_score_breakdown, get_missing_skills, get_similar_resumes, rewrite_suggestion
+    from src.agent import get_score_breakdown, get_missing_skills, get_similar_resumes, rewrite_suggestion
     
     response_text = ""
     
@@ -273,7 +253,6 @@ def run_chat(req: ChatRequest):
         resp = rewrite_suggestion.invoke({"section_text": req.message})
         response_text = f"Here is my suggested optimization for that section:\n\n{resp}"
     else:
-        # Standard conversation fallback
         response_text = (
             "Hello! I am your ResumeIQ career coach. I can help explain your match results. "
             "Try asking questions like:\n"
@@ -292,7 +271,6 @@ def run_chat(req: ChatRequest):
 @app.get("/jobs")
 def list_jobs():
     jds = []
-    # Ensure they are clearly marked as synthetic
     for _, row in app.state.jds_df.iterrows():
         jds.append({
             "jd_id": row["JobDescriptionID"],
@@ -302,7 +280,7 @@ def list_jobs():
             "required_education": row["RequiredEducation"],
             "required_skills": row["RequiredSkills"],
             "description": row["Description"],
-            "type": "synthetic"  # Explicitly labeled as synthetic in payload
+            "type": "synthetic"
         })
     return {
         "status": "success",

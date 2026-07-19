@@ -1,7 +1,9 @@
 import pytest
 import pandas as pd
-from src.preprocessing.cleaner import clean_whitespace, strip_contact_boilerplate, clean_ocr_text, deduplicate_resumes
-from src.preprocessing.extractor import extract_skills, extract_years_experience, extract_degree
+from src.preprocessing import (
+    clean_whitespace, strip_contact_boilerplate, clean_ocr_text, deduplicate_resumes,
+    extract_skills, extract_years_experience, extract_degree
+)
 
 def test_clean_whitespace():
     assert clean_whitespace("hello   world \t new\nline") == "hello world new line"

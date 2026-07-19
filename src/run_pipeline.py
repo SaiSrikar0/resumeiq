@@ -8,12 +8,10 @@ import os
 import json
 import pickle
 import pandas as pd
-from src.models.classical_baseline import build_features_optimized
-from src.models.embedding_model import load_model, get_embeddings_batched
-from src.feedback.explain import load_baseline, compute_explainability_breakdown
-from src.feedback.generate import generate_feedback_report
-from src.retrieval.vector_store import load_index
-from src.agent.agent import create_agent
+from src.models import build_features_optimized, load_model, get_embeddings_batched
+from src.feedback import load_baseline, compute_explainability_breakdown, generate_feedback_report
+from src.retrieval import load_index
+from src.agent import create_agent
 from langchain_core.messages import HumanMessage
 
 def main():
@@ -45,7 +43,7 @@ def main():
     # 2. Load Models
     print("\n[Step 2] Loading models and artifacts...")
     baseline_clf, baseline_type, importances = load_baseline()
-    with open('src/models/artifacts/tfidf_vectorizer.pkl', 'rb') as f:
+    with open('artifacts/tfidf_vectorizer.pkl', 'rb') as f:
         tfidf = pickle.load(f)
         
     tokenizer, model = load_model()

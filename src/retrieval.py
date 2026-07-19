@@ -5,12 +5,7 @@ import numpy as np
 import pandas as pd
 from langchain_core.embeddings import Embeddings
 from langchain_community.vectorstores import FAISS
-
-import sys
-from pathlib import Path
-sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
-
-from src.models.embedding_model import load_model, get_embeddings_batched
+from src.models import load_model, get_embeddings_batched
 
 # Curated set of 30 resume-writing best-practice snippets
 BEST_PRACTICES = [
@@ -80,35 +75,29 @@ class DistilBertEmbeddings(Embeddings):
 
 def build_and_save_index():
     print("Building FAISS Vector Store...")
-    # Load model and tokenizer
     tokenizer, model = load_model()
     
-    # Load embedding metadata to find the best pooling strategy
-    with open('src/models/artifacts/embedding_metadata.json', 'r') as f:
+    with open('artifacts/embedding_metadata.json', 'r') as f:
         meta = json.load(f)
     best_pooling = meta['best_pooling']
     
     custom_embeddings = DistilBertEmbeddings(model, tokenizer, pooling=best_pooling)
     
-    # 1. Load Precomputed Resumes Data
     resumes_df = pd.read_parquet('data/processed/processed_resumes.parquet')
-    resume_embs = np.load('src/models/artifacts/resume_embeddings.npy')
+    resume_embs = np.load('artifacts/resume_embeddings.npy')
     
-    with open('src/models/artifacts/resume_ids.json', 'r') as f:
+    with open('artifacts/resume_ids.json', 'r') as f:
         resume_ids = json.load(f)
         
-    # Construct list of (text, embedding) for resumes
     text_embeddings = []
     metadatas = []
     
     print("Adding resumes to text embeddings list...")
     for i, row in resumes_df.iterrows():
         res_id = row['ResumeID']
-        # Map resume ID to its precomputed embedding index
         res_idx = resume_ids.index(res_id)
         emb = resume_embs[res_idx].tolist()
         
-        # We store the resume summary/text in the document content
         text_content = f"Resume ID: {res_id}\nCategory: {row['Category']}\nText: {row['Text']}"
         text_embeddings.append((text_content, emb))
         
@@ -121,7 +110,6 @@ def build_and_save_index():
             'degree': row.get('DegreeLevel', 'None')
         })
         
-    # 2. Embed best practices and add them to the list
     print("Embedding best practice snippets...")
     bp_embs = custom_embeddings.embed_documents(BEST_PRACTICES)
     
@@ -134,7 +122,6 @@ def build_and_save_index():
             'category': 'general'
         })
         
-    # 3. Create FAISS store
     print("Creating FAISS index...")
     db = FAISS.from_embeddings(
         text_embeddings=text_embeddings,
@@ -142,10 +129,9 @@ def build_and_save_index():
         metadatas=metadatas
     )
     
-    # Save locally
-    os.makedirs('src/retrieval/artifacts', exist_ok=True)
-    db.save_local('src/retrieval/artifacts/faiss_index')
-    print("FAISS index saved to src/retrieval/artifacts/faiss_index")
+    os.makedirs('artifacts', exist_ok=True)
+    db.save_local('artifacts/faiss_index')
+    print("FAISS index saved to artifacts/faiss_index")
     return db
 
 def load_index(model=None, tokenizer=None):
@@ -153,15 +139,15 @@ def load_index(model=None, tokenizer=None):
     if model is None or tokenizer is None:
         tokenizer, model = load_model()
         
-    with open('src/models/artifacts/embedding_metadata.json', 'r') as f:
+    with open('artifacts/embedding_metadata.json', 'r') as f:
         meta = json.load(f)
     best_pooling = meta['best_pooling']
     
     custom_embeddings = DistilBertEmbeddings(model, tokenizer, pooling=best_pooling)
     db = FAISS.load_local(
-        'src/retrieval/artifacts/faiss_index',
+        'artifacts/faiss_index',
         custom_embeddings,
-        allow_dangerous_deserialization=True  # Required for loading pickle-serialized FAISS indices locally
+        allow_dangerous_deserialization=True
     )
     return db
 

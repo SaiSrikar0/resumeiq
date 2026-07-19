@@ -3,15 +3,12 @@ import json
 import pickle
 import numpy as np
 import pandas as pd
-from typing import List, Dict, Any
-
-import sys
-from pathlib import Path
-sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
-
+from typing import List, Dict, Any, TypedDict, Annotated, Sequence
 from langchain_core.tools import tool
+from langchain_core.messages import BaseMessage, SystemMessage
 from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph.message import add_messages
 
 # Lazy load helpers to keep imports fast
 _data_cache = {}
@@ -25,18 +22,18 @@ def _load_data():
 
 def _load_models():
     if 'baseline_clf' not in _data_cache:
-        from src.feedback.explain import load_baseline
+        from src.feedback import load_baseline
         clf, b_type, importances = load_baseline()
         _data_cache['baseline_clf'] = clf
         _data_cache['baseline_type'] = b_type
         _data_cache['importances'] = importances
         
     if 'tfidf' not in _data_cache:
-        with open('src/models/artifacts/tfidf_vectorizer.pkl', 'rb') as f:
+        with open('artifacts/tfidf_vectorizer.pkl', 'rb') as f:
             _data_cache['tfidf'] = pickle.load(f)
             
     if 'faiss_db' not in _data_cache:
-        from src.retrieval.vector_store import load_index
+        from src.retrieval import load_index
         _data_cache['faiss_db'] = load_index()
         
     return (_data_cache['baseline_clf'], _data_cache['baseline_type'], 
@@ -52,7 +49,6 @@ def get_score_breakdown(resume_id: str, jd_id: str) -> str:
         resumes_df, jds_df = _load_data()
         baseline_clf, baseline_type, importances, tfidf, faiss_db = _load_models()
         
-        # Look up resume and JD
         res_matches = resumes_df[resumes_df['ResumeID'] == resume_id]
         jd_matches = jds_df[jds_df['JobDescriptionID'] == jd_id]
         
@@ -64,13 +60,11 @@ def get_score_breakdown(resume_id: str, jd_id: str) -> str:
         res_row = res_matches.iloc[0]
         jd_row = jd_matches.iloc[0]
         
-        from src.feedback.explain import compute_explainability_breakdown
+        from src.feedback import compute_explainability_breakdown
         breakdown = compute_explainability_breakdown(
             res_row, jd_row, baseline_clf, baseline_type, importances, tfidf, 
             faiss_db.embeddings.model, faiss_db.embeddings.tokenizer
         )
-        
-        edu_status = "meets or exceeds required" if breakdown['education_fit']['is_match'] else "does not meet required"
         
         summary = (
             f"Score Breakdown for Resume {resume_id} against JD {jd_id} ({jd_row['Title']}):\n"
@@ -93,7 +87,6 @@ def get_missing_skills(resume_id: str, jd_id: str) -> str:
     try:
         resumes_df, jds_df = _load_data()
         
-        # Look up resume and JD
         res_matches = resumes_df[resumes_df['ResumeID'] == resume_id]
         jd_matches = jds_df[jds_df['JobDescriptionID'] == jd_id]
         
@@ -138,7 +131,7 @@ def get_similar_resumes(resume_id: str) -> str:
             
         res_row = res_matches.iloc[0]
         
-        from src.feedback.generate import retrieve_similar_resumes as get_peers
+        from src.feedback import retrieve_similar_resumes as get_peers
         peers = get_peers(res_row, faiss_db, resumes_df, k=3)
         
         if not peers:
@@ -164,11 +157,8 @@ def rewrite_suggestion(section_text: str) -> str:
     Use this tool when the user asks to rewrite, rephrase, or improve a bullet point or section of their resume.
     """
     text_clean = section_text.strip()
-    
-    # Simple rule-based rewriter to support local CPU/non-LLM execution
     suggestions = []
     
-    # Check for passive boilerplate
     passive_phrases = ["responsible for", "assisted in", "helped with", "worked on", "duties included"]
     detected_passive = False
     for p in passive_phrases:
@@ -176,13 +166,10 @@ def rewrite_suggestion(section_text: str) -> str:
             detected_passive = True
             break
             
-    # Check for metrics
     has_metrics = any(c.isdigit() or '%' in text_clean for c in text_clean)
     
-    # Construct a rewritten suggestion
     rewritten = text_clean
     if detected_passive:
-        # Suggest replacing passive verbs
         rewritten = rewritten.replace("Responsible for writing", "Engineered")
         rewritten = rewritten.replace("responsible for writing", "engineered")
         rewritten = rewritten.replace("Responsible for", "Spearheaded")
@@ -198,7 +185,6 @@ def rewrite_suggestion(section_text: str) -> str:
         suggestions.append("Quantifying Impact: Added placeholder business outcome metrics. Be sure to replace these with your actual metrics.")
         
     if not suggestions:
-        # Generic enhancement
         rewritten = f"Architected and optimized {text_clean}, enhancing system reliability by 25%"
         suggestions.append("Impact Enhancement: Upgraded bullet point to showcase architectural design and system-level impact.")
         
@@ -209,17 +195,12 @@ def rewrite_suggestion(section_text: str) -> str:
     )
     return output
 
-from typing import TypedDict, Annotated, Sequence
-from langchain_core.messages import BaseMessage
-from langgraph.graph.message import add_messages
-
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
     remaining_steps: int
     active_resume_id: str
     active_jd_id: str
 
-# System prompt for the ReAct agent
 SYSTEM_PROMPT = """You are ResumeIQ, an expert AI career coach.
 You answer user follow-up questions about their resume matching and fit score.
 You MUST strictly base your answers on the outputs of the tools provided. Do not fabricate scores, skills, or similar resumes from your parametric knowledge.
@@ -231,8 +212,6 @@ The user's active session is initialized with:
 
 If the user asks questions referencing 'my score', 'my gaps', or 'my resume' without specifying IDs, pass the active IDs above to the tools.
 """
-
-from langchain_core.messages import SystemMessage
 
 def create_agent(llm):
     """Assembles and compiles the ReAct agent graph with memory checkpointer."""
