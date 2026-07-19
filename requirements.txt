@@ -16,4 +16,5 @@ pytest
 httpx
 jinja2
 pyyaml
+python-multipart
 tqdm

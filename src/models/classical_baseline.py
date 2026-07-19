@@ -234,8 +234,11 @@ def main():
         
         # Get importances
         importance_scores = model.get_booster().get_score(importance_type='gain')
-        # Map back to features
-        feature_importances = {feat: float(importance_scores.get(f'f{i}', 0.0)) for i, feat in enumerate(features)}
+        # Map back to features checking both feature name and index
+        feature_importances = {}
+        for i, feat in enumerate(features):
+            val = importance_scores.get(feat, importance_scores.get(f'f{i}', 0.0))
+            feature_importances[feat] = float(val)
         # Normalize
         total_importance = sum(feature_importances.values())
         if total_importance > 0:

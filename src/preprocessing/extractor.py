@@ -255,7 +255,7 @@ def extract_years_experience(text: str, experience_text: str = None) -> float:
     direct_mentions = []
     # Match phrases like "10 years experience", "3+ years of experience", "bringing 10 years"
     patterns = [
-        r'\b(\d{1,2})\+?\s*(?:years?|yrs?)\s+(?:of\s+)?experience\b',
+        r'\b(\d{1,2})\+?\s*(?:years?|yrs?)\s+(?:[a-zA-Z ]{1,30}\s+)?(?:of\s+)?experience\b',
         r'\bexperience\s*:\s*(\d{1,2})\+?\s*(?:years?|yrs?)\b',
         r'\bbringing\s+(\d{1,2})\s+(?:of\s+)?years?\b',
         r'\b(\d{1,2})\+?\s*(?:years?|yrs?)\s+in\s+[a-zA-Z\s]{1,15}\b'
