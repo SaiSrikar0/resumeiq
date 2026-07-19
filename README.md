@@ -31,24 +31,28 @@ graph TD
 ```text
 resumeiq/
   README.md
-  requirements.txt
   .gitignore
-  data/
-    raw/                 # Raw resumes_dataset.jsonl seed
-    processed/           # Processed resumes parquet + job descriptions JSONL
-  artifacts/             # Unified models, vectorizer, & FAISS index storage
-  src/
-    preprocessing.py     # OCR cleaning + entity extraction library
-    prepare_data.py      # Standalone data prep & JDs synthesis script (run once)
-    models.py            # ML baseline models + DistilBERT encoders
-    retrieval.py         # FAISS retrieval + RAG practices indexer
-    feedback.py          # Fit scoring breakdown & feedback generator
-    agent.py             # LangGraph ReAct conversational agent
-    api.py               # FastAPI backend
-    run_pipeline.py      # CLI evaluation pipeline runner
-  frontend/              # React frontend using Tailwind CSS v4
-  tests/                 # PyTest suite
-  docker/                # Docker files & docker-compose configurations
+  docker-compose.yml
+  backend/
+    Dockerfile
+    requirements.txt
+    conftest.py
+    src/
+      cli.py             # Unified CLI: prepare-data | run-pipeline
+      preprocessing.py   # OCR cleaning + entity extraction
+      models.py          # XGBoost/LightGBM baseline + DistilBERT encoder
+      retrieval.py       # FAISS vector store + RAG indexer
+      feedback.py        # Fit scoring breakdown + feedback generator
+      agent.py           # LangGraph ReAct conversational agent
+      api.py             # FastAPI backend
+    tests/               # PyTest suite (22 tests)
+    data/
+      raw/               # resumes_dataset.jsonl
+      processed/         # processed_resumes.parquet + job_descriptions.jsonl
+    artifacts/           # Model files, vectorizer, embeddings & FAISS index
+  frontend/
+    Dockerfile
+    ...                  # Vite/React + Tailwind CSS v4
 ```
 
 ## Setup & Running
@@ -59,8 +63,9 @@ resumeiq/
 - Ollama (for local LLM feedback generation, e.g. Llama 3.1 or Mistral)
 
 ### Installation
-1. Create and activate a Python virtual environment:
+1. Create and activate a Python virtual environment inside `backend/`:
    ```bash
+   cd backend
    python -m venv .venv
    .venv\Scripts\activate
    ```
@@ -68,17 +73,30 @@ resumeiq/
    ```bash
    pip install -r requirements.txt
    ```
+3. Install frontend dependencies:
+   ```bash
+   cd ../frontend
+   npm install
+   ```
 
-### Running EDA (Phase 1)
-To run the preprocessing, cleaning, and EDA metrics printout:
+### CLI — Data Preparation (run once from `backend/`)
+Cleaning + extraction + EDA + JD synthesis:
 ```bash
-python src/preprocessing/run_eda.py
+# from backend/
+python -m src.cli prepare-data
 ```
 
-### Running Tests
-To run the automated tests covering preprocessing and extraction:
+### CLI — End-to-End Pipeline Evaluation (from `backend/`)
+Scoring demo + agent turn:
 ```bash
-pytest tests/
+# from backend/
+python -m src.cli run-pipeline
+```
+
+### Running Tests (from `backend/`)
+```bash
+# from backend/
+python -m pytest tests/ -v
 ```
 
 ## Phase 1 EDA Summary
@@ -134,7 +152,7 @@ If you retrain the baseline LightGBM/XGBoost models or regenerate the FAISS inde
 ```yaml
   backend:
     volumes:
-      - ./artifacts:/app/artifacts
+      - ./backend/artifacts:/app/artifacts
 ```
 
 ## Sample Feedback Report

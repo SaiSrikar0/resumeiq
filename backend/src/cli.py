@@ -1,17 +1,25 @@
+"""
+ResumeIQ CLI — unified entry point for data preparation and pipeline evaluation.
+
+Usage (run from the backend/ directory):
+  python -m src.cli prepare-data    # cleaning + extraction + EDA report + JD synthesis
+  python -m src.cli run-pipeline    # end-to-end scoring demo + agent turn
+"""
+
+import argparse
 import sys
-from pathlib import Path
-
-# Add project root to sys.path to resolve src imports correctly
-sys.path.append(str(Path(__file__).resolve().parent.parent))
-
 import os
 import json
+import pickle
 import pandas as pd
 import numpy as np
-from src.preprocessing import clean_ocr_text, deduplicate_resumes, extract_structured_fields
+from pathlib import Path
+
+# Ensure backend/ is on sys.path so `from src.X import ...` resolves correctly
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 # =====================================================================
-# SYNTHETIC JOB DESCRIPTIONS DATA
+# SHARED: Synthetic Job Descriptions seed data
 # =====================================================================
 
 SEED_JOB_DESCRIPTIONS = [
@@ -377,119 +385,244 @@ SEED_JOB_DESCRIPTIONS = [
     }
 ]
 
-def generate_synthetic_jds(output_path: str):
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    with open(output_path, "w", encoding="utf-8") as f:
-        for jd in SEED_JOB_DESCRIPTIONS:
-            f.write(json.dumps(jd) + "\n")
-    print(f"Generated {len(SEED_JOB_DESCRIPTIONS)} synthetic Job Descriptions in {output_path}")
+# =====================================================================
+# SUBCOMMAND: prepare-data
+# =====================================================================
 
-def load_jsonl_to_df(filepath: str) -> pd.DataFrame:
-    """Loads a JSONL file into a Pandas DataFrame."""
-    records = []
-    with open(filepath, 'r', encoding='utf-8') as f:
-        for line in f:
-            if line.strip():
-                records.append(json.loads(line))
-    return pd.DataFrame(records)
+def cmd_prepare_data(args):
+    """Cleaning + extraction + EDA report + JD synthesis (was prepare_data.py)."""
+    from src.preprocessing import clean_ocr_text, deduplicate_resumes, extract_structured_fields
 
-def main():
-    raw_dataset_path = "c:/Users/bsais/OneDrive/Desktop/celabal/project/data/raw/resumes_dataset.jsonl"
-    processed_parquet_path = "c:/Users/bsais/OneDrive/Desktop/celabal/project/data/processed/processed_resumes.parquet"
-    jds_output_path = "c:/Users/bsais/OneDrive/Desktop/celabal/project/data/processed/job_descriptions.jsonl"
-    
+    raw_dataset_path   = "data/raw/resumes_dataset.jsonl"
+    processed_path     = "data/processed/processed_resumes.parquet"
+    jds_output_path    = "data/processed/job_descriptions.jsonl"
+
     print("=" * 60)
     print("Starting ResumeIQ Preprocessing & EDA Pipeline")
     print("=" * 60)
-    
-    # 0. Synthesize Job Descriptions
+
+    # Step 0: Synthesize Job Descriptions
     print("\n[Step 0] Generating synthetic job descriptions...")
-    generate_synthetic_jds(jds_output_path)
-    
-    # 1. Load Raw Resumes
+    os.makedirs(os.path.dirname(jds_output_path), exist_ok=True)
+    with open(jds_output_path, "w", encoding="utf-8") as f:
+        for jd in SEED_JOB_DESCRIPTIONS:
+            f.write(json.dumps(jd) + "\n")
+    print(f"Generated {len(SEED_JOB_DESCRIPTIONS)} synthetic Job Descriptions → {jds_output_path}")
+
+    # Step 1: Load Raw Resumes
     print(f"\n[Step 1] Loading raw dataset from: {raw_dataset_path}")
     if not os.path.exists(raw_dataset_path):
         raise FileNotFoundError(f"Raw resume dataset not found at {raw_dataset_path}")
-        
-    df = load_jsonl_to_df(raw_dataset_path)
+
+    records = []
+    with open(raw_dataset_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            if line.strip():
+                records.append(json.loads(line))
+    df = pd.DataFrame(records)
     total_raw_count = len(df)
     print(f"Loaded {total_raw_count} raw resumes.")
-    
-    # 2. Profile Field Completeness (Before Cleaning)
+
+    # Step 2: Field completeness
     print("\n[Step 2] Profiling field completeness (Before cleaning):")
     missing_report = df.isnull().sum()
     for col, missing in missing_report.items():
         completeness = ((total_raw_count - missing) / total_raw_count) * 100
         print(f"  Field: {col:<15} | Completeness: {completeness:6.2f}% | Missing: {missing}")
-        
-    # 3. Clean Text Fields
-    print("\n[Step 3] Cleaning OCR text, stripping headers, and normalizing whitespace...")
-    df['Original_Summary'] = df['Summary']
+
+    # Step 3: Clean text fields
+    print("\n[Step 3] Cleaning OCR text, stripping headers, normalizing whitespace...")
+    df['Original_Summary']    = df['Summary']
     df['Original_Experience'] = df['Experience']
-    
-    df['Summary'] = df['Summary'].fillna("").apply(clean_ocr_text)
+    df['Summary']    = df['Summary'].fillna("").apply(clean_ocr_text)
     df['Experience'] = df['Experience'].fillna("").apply(clean_ocr_text)
-    df['Education'] = df['Education'].fillna("").apply(clean_ocr_text)
-    df['Text'] = df['Text'].fillna("").apply(clean_ocr_text)
-    
-    # 4. De-duplicate Near-Identical Resumes
-    print("\n[Step 4] De-duplicating near-identical resumes (TF-IDF + Cosine Similarity > 0.95)...")
+    df['Education']  = df['Education'].fillna("").apply(clean_ocr_text)
+    df['Text']       = df['Text'].fillna("").apply(clean_ocr_text)
+
+    # Step 4: De-duplicate
+    print("\n[Step 4] De-duplicating near-identical resumes (TF-IDF cosine > 0.95)...")
     df_dedup = deduplicate_resumes(df, text_col='Text', threshold=0.95)
     dedup_count = len(df_dedup)
-    print(f"Removed {total_raw_count - dedup_count} near-duplicate resumes. Remaining: {dedup_count}")
-    
-    # 5. Extract Structured Fields
-    print("\n[Step 5] Extracting structured features (Skills, Experience, Degree level)...")
-    extracted_features = []
-    for idx, row in df_dedup.iterrows():
-        features = extract_structured_fields(row)
-        extracted_features.append(features)
-        
-    features_df = pd.DataFrame(extracted_features)
+    print(f"Removed {total_raw_count - dedup_count} near-duplicates. Remaining: {dedup_count}")
+
+    # Step 5: Extract structured fields
+    print("\n[Step 5] Extracting structured features (Skills, Experience, Degree)...")
+    extracted_features = [extract_structured_fields(row) for _, row in df_dedup.iterrows()]
+    features_df  = pd.DataFrame(extracted_features)
     df_processed = pd.concat([df_dedup, features_df], axis=1)
-    
-    # 6. Report Category Balance
+
+    # Step 6: Category balance
     print("\n[Step 6] Category Balance / Class Distribution:")
     cat_counts = df_processed['Category'].value_counts()
     for cat, count in cat_counts.items():
-        percentage = (count / dedup_count) * 100
-        print(f"  Category: {cat:<30} | Count: {count:<4} | Percentage: {percentage:5.2f}%")
-        
-    # 7. Text Length Distributions
-    print("\n[Step 7] Text Length Distributions (in characters):")
+        print(f"  Category: {cat:<30} | Count: {count:<4} | {count/dedup_count*100:5.2f}%")
+
+    # Step 7: Text length distributions
+    print("\n[Step 7] Text Length Distributions (characters):")
     text_lengths = df_processed['Text'].str.len()
-    print(f"  Min length:  {text_lengths.min():,}")
-    print(f"  Max length:  {text_lengths.max():,}")
-    print(f"  Mean length: {text_lengths.mean():.1f}")
-    print(f"  Median length:{text_lengths.median():.1f}")
-    
-    # 8. Print Sample Before/After Cleaning
+    print(f"  Min: {text_lengths.min():,}  Max: {text_lengths.max():,}  "
+          f"Mean: {text_lengths.mean():.1f}  Median: {text_lengths.median():.1f}")
+
+    # Step 8: Sample before/after
     print("\n[Step 8] Sample Before/After Cleaning:")
-    sample_idx = 0
     if len(df_processed) > 0:
-        sample_row = df_processed.iloc[sample_idx]
-        print("-" * 50)
-        print("ORIGINAL PHONE FIELD:")
-        print(repr(sample_row.get('Phone', '')))
-        print("\nORIGINAL SUMMARY FIELD (First 300 chars):")
-        print(repr(sample_row.get('Original_Summary', '')[:300]))
-        print("\nCLEANED SUMMARY FIELD (First 300 chars):")
-        print(repr(sample_row.get('Summary', '')[:300]))
-        print("\nEXTRACTED STRUCTURED FIELDS:")
-        print(f"  Extracted Skills (First 10): {sample_row.get('ExtractedSkills', [])[:10]}")
-        print(f"  Years of Experience:         {sample_row.get('YearsOfExperience', 0.0)}")
-        print(f"  Degree Level:                {sample_row.get('DegreeLevel', 'None')}")
-        print("-" * 50)
-        
-    # 9. Persist Cleaned Dataset
-    print(f"\n[Step 9] Saving processed resumes to parquet: {processed_parquet_path}")
-    os.makedirs(os.path.dirname(processed_parquet_path), exist_ok=True)
-    df_processed.to_parquet(processed_parquet_path, index=False)
+        sample = df_processed.iloc[0]
+        print(f"  Orig summary (300 ch): {repr(sample.get('Original_Summary','')[:300])}")
+        print(f"  Clean summary (300 ch): {repr(sample.get('Summary','')[:300])}")
+        print(f"  Skills (first 10): {sample.get('ExtractedSkills',[])[:10]}")
+        print(f"  Experience years: {sample.get('YearsOfExperience', 0.0)}")
+        print(f"  Degree level: {sample.get('DegreeLevel','None')}")
+
+    # Step 9: Persist
+    print(f"\n[Step 9] Saving processed resumes → {processed_path}")
+    os.makedirs(os.path.dirname(processed_path), exist_ok=True)
+    df_processed.to_parquet(processed_path, index=False)
     print("Dataset saved successfully.")
-    
+
     print("\n" + "=" * 60)
     print("Preprocessing & EDA Phase Completed Successfully")
     print("=" * 60)
+
+
+# =====================================================================
+# SUBCOMMAND: run-pipeline
+# =====================================================================
+
+def cmd_run_pipeline(args):
+    """End-to-end scoring demo + agent turn (was run_pipeline.py)."""
+    from src.models   import build_features_optimized, load_model, get_embeddings_batched
+    from src.feedback import load_baseline, compute_explainability_breakdown, generate_feedback_report
+    from src.retrieval import load_index
+    from src.agent    import create_agent
+    from langchain_core.messages import HumanMessage
+
+    print("=" * 60)
+    print("ResumeIQ: End-to-End Pipeline Evaluation")
+    print("=" * 60)
+
+    # 1. Load Data
+    print("\n[Step 1] Loading sample data...")
+    resumes_df = pd.read_parquet('data/processed/processed_resumes.parquet')
+    jds_df     = pd.read_json('data/processed/job_descriptions.jsonl', lines=True)
+
+    category      = "Java Developer"
+    java_resumes  = resumes_df[resumes_df['Category'] == category]
+    java_jds      = jds_df[jds_df['Category'] == category]
+    res_row = java_resumes.iloc[0] if not java_resumes.empty else resumes_df.iloc[0]
+    jd_row  = java_jds.iloc[0]     if not java_jds.empty     else jds_df.iloc[0]
+
+    print(f"Candidate: {res_row['ResumeID']} | {res_row['Category']}")
+    print(f"JD:        {jd_row['JobDescriptionID']} | {jd_row['Title']} | {jd_row['Category']}")
+
+    # 2. Load Models
+    print("\n[Step 2] Loading models and artifacts...")
+    baseline_clf, baseline_type, importances = load_baseline()
+    with open('artifacts/tfidf_vectorizer.pkl', 'rb') as f:
+        tfidf = pickle.load(f)
+    tokenizer, model = load_model()
+    faiss_db = load_index(model, tokenizer)
+    print("All models loaded.")
+
+    # 3. Fit score + explainability
+    print("\n[Step 3] Computing fit score and explainability breakdown...")
+    breakdown = compute_explainability_breakdown(
+        res_row, jd_row, baseline_clf, baseline_type, importances, tfidf, model, tokenizer
+    )
+    print("-" * 40)
+    print(f"Fit Score ({baseline_type}): {breakdown['baseline_fit_score']:.1f}%")
+    print(f"\nExplanation:\n{breakdown['explanation_text']}")
+    print(f"\nTop Attention Tokens: {breakdown['attention_top_tokens']}")
+    print("-" * 40)
+
+    # 4. Feedback report
+    print("\n[Step 4] Generating retrieval-grounded feedback report...")
+    feedback_report = generate_feedback_report(
+        res_row, jd_row, breakdown, faiss_db, resumes_df,
+        baseline_clf, baseline_type, tfidf, use_llm=False
+    )
+    report_path = Path("artifacts/sample_feedback_report.md")
+    report_path.write_text(feedback_report, encoding="utf-8")
+    print(f"Feedback report saved → {report_path}")
+
+    # 5. Agent demo turn
+    print("\n[Step 5] Running demo turn with Conversational Agent...")
+    from langchain_core.language_models.chat_models import BaseChatModel
+    from langchain_core.messages import AIMessage, ToolMessage
+    from langchain_core.outputs import ChatResult, ChatGeneration
+
+    class DemoReActLLM(BaseChatModel):
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+        def _generate(self, messages, stop=None, **kwargs):
+            has_tool = any(isinstance(m, ToolMessage) for m in messages)
+            if not has_tool:
+                tool_call = {
+                    "name": "get_score_breakdown",
+                    "args": {"resume_id": res_row['ResumeID'], "jd_id": jd_row['JobDescriptionID']},
+                    "id": "demo_call_1"
+                }
+                ai_msg = AIMessage(content="", tool_calls=[tool_call])
+            else:
+                tool_output = [m.content for m in messages if isinstance(m, ToolMessage)][-1]
+                ai_msg = AIMessage(
+                    content=f"Sure! Here is the score breakdown:\n\n{tool_output}"
+                )
+            return ChatResult(generations=[ChatGeneration(message=ai_msg)])
+
+        def _llm_type(self) -> str:
+            return "demo-react-llm"
+
+    agent = create_agent(DemoReActLLM())
+    query = "Why did I get this score? Can you break it down for me?"
+    print(f"User Query: '{query}'")
+
+    state = {
+        "messages": [HumanMessage(content=query)],
+        "active_resume_id": res_row['ResumeID'],
+        "active_jd_id": jd_row['JobDescriptionID']
+    }
+    config = {"configurable": {"thread_id": "demo_session_99"}}
+    agent_output = agent.invoke(state, config=config)
+
+    print("\n--- Agent Conversation Transcript ---")
+    for msg in agent_output["messages"]:
+        role = msg.__class__.__name__
+        content = msg.content
+        if hasattr(msg, 'tool_calls') and msg.tool_calls:
+            content += f" [Tool Call: {msg.tool_calls[0]['name']}]"
+        print(f"[{role}]: {content}\n")
+    print("--------------------------------------")
+    print("\nPipeline run complete.")
+
+
+# =====================================================================
+# ENTRY POINT
+# =====================================================================
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="python -m src.cli",
+        description="ResumeIQ backend CLI"
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    sub.add_parser(
+        "prepare-data",
+        help="Run cleaning, extraction, EDA report, and JD synthesis. Must be run from backend/."
+    )
+    sub.add_parser(
+        "run-pipeline",
+        help="Run end-to-end scoring demo with agent turn. Must be run from backend/."
+    )
+
+    parsed = parser.parse_args()
+
+    if parsed.command == "prepare-data":
+        cmd_prepare_data(parsed)
+    elif parsed.command == "run-pipeline":
+        cmd_run_pipeline(parsed)
+
 
 if __name__ == "__main__":
     main()

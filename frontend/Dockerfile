@@ -2,12 +2,12 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy package files from the frontend directory
-COPY frontend/package*.json ./
+# Build context is frontend/ — package files are at the root of the context
+COPY package*.json ./
 RUN npm install
 
 # Copy the rest of the frontend source code
-COPY frontend/ .
+COPY . .
 
 # Build the application
 RUN npm run build
