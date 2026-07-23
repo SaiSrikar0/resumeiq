@@ -1,9 +1,13 @@
 import os
+import io
 import json
 import uuid
 import pickle
 import pandas as pd
 import numpy as np
+import fitz  # PyMuPDF — PDF text extraction
+import docx  # python-docx — Word (.docx) text extraction
+from contextlib import asynccontextmanager
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,10 +23,30 @@ from src.retrieval import load_index
 from src.models import load_model
 from src.agent import create_agent
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Load all models and data on startup."""
+    print("Loading ResumeIQ datasets and model artifacts...")
+    app.state.resumes_df = pd.read_parquet('data/processed/processed_resumes.parquet')
+    app.state.jds_df = pd.read_json('data/processed/job_descriptions.jsonl', lines=True)
+
+    app.state.baseline_clf, app.state.baseline_type, app.state.importances = load_baseline()
+    with open('artifacts/tfidf_vectorizer.pkl', 'rb') as f:
+        app.state.tfidf = pickle.load(f)
+
+    app.state.tokenizer, app.state.emb_model = load_model()
+    app.state.faiss_db = load_index(app.state.emb_model, app.state.tokenizer)
+    print("Startup complete. All models loaded.")
+    yield
+    # Cleanup on shutdown (if needed)
+    print("ResumeIQ API shutting down.")
+
+
 app = FastAPI(
     title="ResumeIQ API",
     description="Backend API for ResumeIQ resume match screening, feedback generation, and career agent chat.",
-    version="1.0"
+    version="1.0",
+    lifespan=lifespan
 )
 
 app.add_middleware(
@@ -35,19 +59,11 @@ app.add_middleware(
 
 app.state.custom_resumes = {}
 
-@app.on_event("startup")
-def startup_event():
-    print("Loading ResumeIQ datasets and model artifacts...")
-    app.state.resumes_df = pd.read_parquet('data/processed/processed_resumes.parquet')
-    app.state.jds_df = pd.read_json('data/processed/job_descriptions.jsonl', lines=True)
-    
-    app.state.baseline_clf, app.state.baseline_type, app.state.importances = load_baseline()
-    with open('artifacts/tfidf_vectorizer.pkl', 'rb') as f:
-        app.state.tfidf = pickle.load(f)
-        
-    app.state.tokenizer, app.state.emb_model = load_model()
-    app.state.faiss_db = load_index(app.state.emb_model, app.state.tokenizer)
-    print("Startup complete. All models loaded.")
+@app.get("/")
+@app.get("/health")
+def health_check():
+    return {"status": "online", "message": "ResumeIQ API is running"}
+
 
 class ResumeUploadText(BaseModel):
     text: str = Field(..., min_length=10, description="Raw text of the resume")
@@ -94,7 +110,7 @@ def get_job_description(jd_id: Optional[str], jd_text: Optional[str]) -> Dict[st
         
     skills = extract_skills(cleaned_jd)
     exp = extract_years_experience(cleaned_jd)
-    deg = extract_degree(cleaned_jd)
+    deg = extract_degree(cleaned_jd, is_jd=True)
     
     return {
         "JobDescriptionID": f"CUSTOM_{uuid.uuid4().hex[:6].upper()}",
@@ -113,16 +129,48 @@ async def upload_resume(
     category: str = Form("Unknown")
 ):
     resume_content = ""
+
     if file:
         content_bytes = await file.read()
-        try:
-            resume_content = content_bytes.decode("utf-8")
-        except UnicodeDecodeError:
-            raise HTTPException(status_code=400, detail="Uploaded file must be UTF-8 encoded text.")
+        filename = (file.filename or "").lower()
+
+        # ── PDF ────────────────────────────────────────────────
+        if filename.endswith(".pdf") or content_bytes[:4] == b"%PDF":
+            try:
+                pdf_doc = fitz.open(stream=io.BytesIO(content_bytes), filetype="pdf")
+                pages = [page.get_text() for page in pdf_doc]
+                resume_content = "\n".join(pages)
+                pdf_doc.close()
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Could not parse PDF: {e}")
+
+        # ── DOCX ───────────────────────────────────────────────
+        elif filename.endswith(".docx"):
+            try:
+                doc = docx.Document(io.BytesIO(content_bytes))
+                resume_content = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Could not parse DOCX: {e}")
+
+        # ── Plain TXT (or fallback) ────────────────────────────
+        else:
+            for enc in ("utf-8", "utf-8-sig", "latin-1", "cp1252"):
+                try:
+                    resume_content = content_bytes.decode(enc)
+                    break
+                except UnicodeDecodeError:
+                    continue
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Uploaded file could not be decoded. Please upload a PDF, DOCX, or plain TXT file."
+                )
+
     elif text:
         resume_content = text
     else:
         raise HTTPException(status_code=400, detail="Must provide either text body or a file.")
+
         
     cleaned_text = clean_ocr_text(resume_content)
     if len(cleaned_text.strip()) < 10:

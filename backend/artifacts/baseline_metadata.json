@@ -1,21 +1,21 @@
 {
-    "best_model_type": "xgboost",
+    "best_model_type": "lightgbm",
     "xgb_cv_metrics": {
-        "precision": 0.8210688141446998,
-        "recall": 0.6718328824852104,
-        "f1": 0.7387611820637792,
-        "auc": 0.9083717055655323
+        "precision": 0.8192366391766814,
+        "recall": 0.66915856882992,
+        "f1": 0.7363321560017082,
+        "auc": 0.9089967616676375
     },
     "lgb_cv_metrics": {
-        "precision": 0.8215863449938354,
-        "recall": 0.6728913033240899,
-        "f1": 0.739600549229015,
-        "auc": 0.9082905686342171
+        "precision": 0.8220357139938373,
+        "recall": 0.6712590902566548,
+        "f1": 0.7388220550284055,
+        "auc": 0.9093111928157992
     },
     "feature_importances": {
-        "skill_overlap_ratio": 0.09513470886169101,
-        "experience_gap": 0.07633861932387093,
-        "degree_match": 0.054428392525310676,
-        "tfidf_similarity": 0.7740982792891274
+        "skill_overlap_ratio": 0.07687931108852317,
+        "experience_gap": 0.08383504252136052,
+        "degree_match": 0.014492103440527515,
+        "tfidf_similarity": 0.8247935429495888
     }
 }

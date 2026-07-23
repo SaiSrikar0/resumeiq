@@ -28,3 +28,6 @@ Thumbs.db
 *.njsproj
 *.sln
 *.swp
+
+# Manual QA / local testing — never commit
+qa/

@@ -154,7 +154,7 @@ SKILL_PATTERNS = {
     "TypeScript": [r"\btypescript\b", r"\bts\b"],
     "C++": [r"\bc\+\+\b", r"\bcpp\b"],
     "C#": [r"\bc#\b", r"\bcsharp\b"],
-    "C": [r"\bc\b(?![#\+])"],
+    "C": [r"\b(?<![pP]&)(?<![pP]\s&)(?<![pP]\s&\s)[cC]\s+programming\b", r"\blanguage\s+[cC]\b", r"\b[cC]\s+language\b", r"\b[cC]\s+coding\b"],
     "Go": [r"\bgo\b(?!lang)", r"\bgolang\b"],
     "Ruby": [r"\bruby\b"],
     "PHP": [r"\bphp\b"],
@@ -170,6 +170,13 @@ SKILL_PATTERNS = {
     "Shell/Bash": [r"\bbash\b", r"\bshell\s+script(?:ing)?\b"],
     "PowerShell": [r"\bpowershell\b"],
     
+    # Core Fundamentals
+    "OOP": [r"\boop\b", r"\boops\b", r"\bobject[- ]oriented\b", r"\bobject[- ]oriented\s+programming\b"],
+    "Data Structures": [r"\bdata\s+structures?\b", r"\bdsa\b", r"\balgorithms?\b"],
+    "REST APIs": [r"\brest\s*apis?\b", r"\brestful\b", r"\brest\b(?!\s+area)"],
+    "Web Applications": [r"\bweb\s+apps?\b", r"\bweb\s+applications?\b", r"\bweb\s+development\b", r"\bweb\s+dev\b", r"\bfull-?stack\b"],
+    "Database": [r"\bdatabase(?:s|\s+management|\s+systems?)?\b", r"\bdbms\b"],
+
     # Frontend
     "React": [r"\breact\b", r"\breact\.js\b", r"\breactjs\b"],
     "Angular": [r"\bangular\b", r"\bangularjs\b"],
@@ -180,6 +187,7 @@ SKILL_PATTERNS = {
     "Sass": [r"\bsass\b", r"\bscss\b"],
     "jQuery": [r"\bjquery\b"],
     "Bootstrap": [r"\bbootstrap\b"],
+    "Streamlit": [r"\bstreamlit\b"],
     
     # Backend
     "Node.js": [r"\bnode\.js\b", r"\bnodejs\b", r"\bnode\b"],
@@ -194,7 +202,7 @@ SKILL_PATTERNS = {
     
     # Databases / Big Data
     "MySQL": [r"\bmysql\b"],
-    "PostgreSQL": [r"\bpostgresql\b", r"\bpostgres\b"],
+    "PostgreSQL": [r"\bpostgresql\b", r"\bpostgres\b", r"\bsupabase\b"],
     "Oracle": [r"\boracle\b"],
     "SQL Server": [r"\bsql\s*server\b", r"\bmssql\b"],
     "SQLite": [r"\bsqlite\b"],
@@ -231,6 +239,7 @@ SKILL_PATTERNS = {
     "Grafana": [r"\bgrafana\b"],
     
     # AI / Data Science
+    "Generative AI": [r"\bgen-?ai\b", r"\bgenerative\s+ai\b", r"\bllms?\b", r"\bollama\b", r"\bgroq\b", r"\bdiffusion\s+models?\b"],
     "Machine Learning": [r"\bmachine\s+learning\b", r"\bml\b"],
     "Deep Learning": [r"\bdeep\s+learning\b", r"\bdl\b"],
     "Artificial Intelligence": [r"\bartificial\s+intelligence\b", r"\bai\b"],
@@ -244,6 +253,8 @@ SKILL_PATTERNS = {
     "NumPy": [r"\bnumpy\b"],
     "Tableau": [r"\btableau\b"],
     "PowerBI": [r"\bpowerbi\b", r"\bpower\s+bi\b"],
+    "Data Analytics": [r"\beda\b", r"\bdata\s+analytics?\b", r"\bdata\s+analysis\b", r"\bexploratory\s+data\s+analysis\b", r"\bmatplotlib\b", r"\bseaborn\b"],
+    "Anomaly Detection": [r"\banomaly\s+detection\b", r"\bisolation\s+forest\b"],
     
     # Security
     "Network Security": [r"\bnetwork\s+security\b"],
@@ -286,7 +297,7 @@ SKILL_PATTERNS = {
     
     # QA / Testing
     "QA": [r"\bqa\b", r"\bquality\s+assurance\b"],
-    "Testing": [r"\btesting\b", r"\btest\s+cases?\b"],
+    "Testing": [r"\btesting\b", r"\btest\s+cases?\b", r"\btesting\s+lifecycle\b"],
     "Selenium": [r"\bselenium\b"],
     
     # Technical Writing
@@ -405,27 +416,39 @@ def extract_years_experience(text: str, experience_text: str = None) -> float:
     res = max(direct_val, parsed_val)
     return round(res, 1)
 
-def extract_degree(text: str) -> str:
+def extract_degree(text: str, is_jd: bool = False) -> str:
     """
-    Extracts the highest degree level mentioned in text.
-    Mapping priority: PhD > Master's > Bachelor's > None
+    Extracts degree level mentioned in text.
+    For resumes: PhD > Master's > Bachelor's > None
+    For JDs (is_jd=True): returns minimum acceptable qualification (Bachelor's > Master's > PhD > None)
     """
     if not isinstance(text, str):
         return "None"
     
     text_lower = text.lower()
-    phd_pattern = r'\b(?:phd\b|ph\.d\.(?!\w)|doctorate\b|doctor\s+of\s+philosophy\b)'
-    masters_pattern = r'\b(?:ms\b|m\.s\.(?!\w)|msc\b|m\.sc\.(?!\w)|mtech\b|m\.tech\.(?!\w)|mba\b|m\.b\.a\.(?!\w)|master\b|masters\b|postgraduate\b)'
-    bachelors_pattern = r'\b(?:bs\b|b\.s\.(?!\w)|bsc\b|b\.sc\.(?!\w)|btech\b|b\.tech\.(?!\w)|ba\b|b\.a\.(?!\w)|bachelor\b|bachelors\b|undergraduate\b|graduate\b)'
+    phd_pattern = r'\b(?:phd|ph\.d|doctorate|doctor\s+of\s+philosophy)\b'
+    masters_pattern = r'\b(?:m\.?\s*tech|m\.?\s*e|m\.?\s*s|m\.?\s*sc|m\.?\s*a|m\.?\s*ca|m\.?\s*ba|master\'?s?|postgraduate)\b'
+    bachelors_pattern = r'\b(?:b\.?\s*tech|b\.?\s*e|b\.?\s*s|b\.?\s*sc|b\.?\s*a|b\.?\s*ca|bachelor\'?s?|undergraduate)\b'
     
-    if re.search(phd_pattern, text_lower):
-        return "PhD"
-    elif re.search(masters_pattern, text_lower):
-        return "Master's"
-    elif re.search(bachelors_pattern, text_lower):
-        return "Bachelor's"
-    else:
+    if is_jd:
+        if re.search(bachelors_pattern, text_lower):
+            return "Bachelor's"
+        elif re.search(masters_pattern, text_lower):
+            return "Master's"
+        elif re.search(phd_pattern, text_lower):
+            return "PhD"
         return "None"
+    else:
+        if re.search(phd_pattern, text_lower):
+            return "PhD"
+        elif re.search(masters_pattern, text_lower) and not re.search(bachelors_pattern, text_lower):
+            return "Master's"
+        elif re.search(bachelors_pattern, text_lower):
+            return "Bachelor's"
+        elif re.search(masters_pattern, text_lower):
+            return "Master's"
+        else:
+            return "None"
 
 def extract_structured_fields(row: Dict) -> Dict:
     """

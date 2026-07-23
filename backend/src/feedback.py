@@ -10,10 +10,21 @@ from src.retrieval import load_index
 
 def load_baseline():
     """Loads the best-performing classical ML model and its feature importances."""
-    metadata_path = 'artifacts/baseline_metadata.json'
-    if not os.path.exists(metadata_path):
+    possible_dirs = [
+        "artifacts",
+        "backend/artifacts",
+        os.path.join(os.path.dirname(__file__), "..", "artifacts"),
+    ]
+    base_dir = None
+    for pd_dir in possible_dirs:
+        if os.path.exists(os.path.join(pd_dir, "baseline_metadata.json")):
+            base_dir = pd_dir
+            break
+
+    if not base_dir:
         raise FileNotFoundError("Baseline metadata not found. Run prepare_data.py and models training first.")
-        
+
+    metadata_path = os.path.join(base_dir, "baseline_metadata.json")
     with open(metadata_path, 'r') as f:
         meta = json.load(f)
         
@@ -23,10 +34,10 @@ def load_baseline():
     if best_type == 'xgboost':
         import xgboost as xgb
         clf = xgb.XGBClassifier()
-        clf.load_model('artifacts/baseline_xgb.json')
+        clf.load_model(os.path.join(base_dir, 'baseline_xgb.json'))
     else:
         import lightgbm as lgb
-        clf = lgb.Booster(model_file='artifacts/baseline_lgb.txt')
+        clf = lgb.Booster(model_file=os.path.join(base_dir, 'baseline_lgb.txt'))
         
     return clf, best_type, importances
 

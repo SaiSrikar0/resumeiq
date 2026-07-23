@@ -393,7 +393,13 @@ def cmd_prepare_data(args):
     """Cleaning + extraction + EDA report + JD synthesis (was prepare_data.py)."""
     from src.preprocessing import clean_ocr_text, deduplicate_resumes, extract_structured_fields
 
-    raw_dataset_path   = "data/raw/resumes_dataset.jsonl"
+    raw_dataset_path = "data/raw/resumes_dataset.jsonl"
+    if not os.path.exists(raw_dataset_path):
+        if os.path.exists("resumes_dataset.jsonl"):
+            raw_dataset_path = "resumes_dataset.jsonl"
+        elif os.path.exists("../resumes_dataset.jsonl"):
+            raw_dataset_path = "../resumes_dataset.jsonl"
+
     processed_path     = "data/processed/processed_resumes.parquet"
     jds_output_path    = "data/processed/job_descriptions.jsonl"
 
@@ -407,7 +413,7 @@ def cmd_prepare_data(args):
     with open(jds_output_path, "w", encoding="utf-8") as f:
         for jd in SEED_JOB_DESCRIPTIONS:
             f.write(json.dumps(jd) + "\n")
-    print(f"Generated {len(SEED_JOB_DESCRIPTIONS)} synthetic Job Descriptions → {jds_output_path}")
+    print(f"Generated {len(SEED_JOB_DESCRIPTIONS)} synthetic Job Descriptions -> {jds_output_path}")
 
     # Step 1: Load Raw Resumes
     print(f"\n[Step 1] Loading raw dataset from: {raw_dataset_path}")
@@ -474,7 +480,7 @@ def cmd_prepare_data(args):
         print(f"  Degree level: {sample.get('DegreeLevel','None')}")
 
     # Step 9: Persist
-    print(f"\n[Step 9] Saving processed resumes → {processed_path}")
+    print(f"\n[Step 9] Saving processed resumes -> {processed_path}")
     os.makedirs(os.path.dirname(processed_path), exist_ok=True)
     df_processed.to_parquet(processed_path, index=False)
     print("Dataset saved successfully.")
@@ -490,7 +496,7 @@ def cmd_prepare_data(args):
 
 def cmd_run_pipeline(args):
     """End-to-end scoring demo + agent turn (was run_pipeline.py)."""
-    from src.models   import build_features_optimized, load_model, get_embeddings_batched
+    from src.models   import load_model
     from src.feedback import load_baseline, compute_explainability_breakdown, generate_feedback_report
     from src.retrieval import load_index
     from src.agent    import create_agent
@@ -542,7 +548,7 @@ def cmd_run_pipeline(args):
     )
     report_path = Path("artifacts/sample_feedback_report.md")
     report_path.write_text(feedback_report, encoding="utf-8")
-    print(f"Feedback report saved → {report_path}")
+    print(f"Feedback report saved -> {report_path}")
 
     # 5. Agent demo turn
     print("\n[Step 5] Running demo turn with Conversational Agent...")
@@ -570,6 +576,7 @@ def cmd_run_pipeline(args):
                 )
             return ChatResult(generations=[ChatGeneration(message=ai_msg)])
 
+        @property
         def _llm_type(self) -> str:
             return "demo-react-llm"
 

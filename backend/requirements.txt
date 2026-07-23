@@ -8,13 +8,11 @@ xgboost
 lightgbm
 torch
 transformers
-langchain
+langchain-core
 langgraph
+langchain-community
 faiss-cpu
 pydantic
-pytest
-httpx
-jinja2
-pyyaml
 python-multipart
-tqdm
+pymupdf
+python-docx
